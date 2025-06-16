@@ -81,22 +81,43 @@ def init_db():
         
         conn.commit()
 
-# User management functions
-def get_user_by_username(username: str):
+# Helper function to find user by username (handles both encrypted and unencrypted)
+def _find_user_row(username):
     with get_db() as conn:
         c = conn.cursor()
-        c.execute('SELECT username, password_hash, role, first_name, last_name, registration_date FROM users WHERE LOWER(username)=LOWER(?)', (username,))
-        row = c.fetchone()
-        if row:
-            return {
-                'username': row[0],
-                'password_hash': row[1],
-                'role': row[2],
-                'first_name': row[3],
-                'last_name': row[4],
-                'registration_date': row[5]
-            }
+        c.execute('SELECT username, password_hash, role, first_name, last_name, registration_date FROM users')
+        rows = c.fetchall()
+        
+        for row in rows:
+            try:
+                # Try to decrypt the stored username
+                decrypted_username = decrypt_data(row[0])
+                if decrypted_username.lower() == username.lower():
+                    return row
+            except:
+                # Handle legacy unencrypted data
+                if row[0].lower() == username.lower():
+                    return row
         return None
+
+# User management functions
+def get_user_by_username(username: str):
+    row = _find_user_row(username)
+    if row:
+        try:
+            decrypted_username = decrypt_data(row[0])
+        except:
+            decrypted_username = row[0]  # Legacy unencrypted data
+            
+        return {
+            'username': decrypted_username,
+            'password_hash': row[1],
+            'role': row[2],
+            'first_name': row[3],
+            'last_name': row[4],
+            'registration_date': row[5]
+        }
+    return None
 
 def add_user(username, password_hash, role, first_name, last_name):
     try:
@@ -141,13 +162,19 @@ def get_all_users():
 
 def update_user(username, new_first_name=None, new_last_name=None):
     try:
+        # Find the actual stored username (encrypted or unencrypted)
+        row = _find_user_row(username)
+        if not row:
+            return False
+            
+        stored_username = row[0]  # Use the actual stored username
+        
         with get_db() as conn:
             c = conn.cursor()
-            encrypted_username = encrypt_data(username)
             if new_first_name:
-                c.execute('UPDATE users SET first_name=? WHERE username=?', (new_first_name, encrypted_username))
+                c.execute('UPDATE users SET first_name=? WHERE username=?', (new_first_name, stored_username))
             if new_last_name:
-                c.execute('UPDATE users SET last_name=? WHERE username=?', (new_last_name, encrypted_username))
+                c.execute('UPDATE users SET last_name=? WHERE username=?', (new_last_name, stored_username))
             conn.commit()
         return True
     except:
@@ -155,10 +182,16 @@ def update_user(username, new_first_name=None, new_last_name=None):
 
 def delete_user(username):
     try:
+        # Find the actual stored username (encrypted or unencrypted)
+        row = _find_user_row(username)
+        if not row:
+            return False
+            
+        stored_username = row[0]  # Use the actual stored username
+        
         with get_db() as conn:
             c = conn.cursor()
-            encrypted_username = encrypt_data(username)
-            c.execute('DELETE FROM users WHERE username=?', (encrypted_username,))
+            c.execute('DELETE FROM users WHERE username=?', (stored_username,))
             conn.commit()
         return True
     except:
@@ -166,10 +199,16 @@ def delete_user(username):
 
 def reset_user_password(username, new_password_hash):
     try:
+        # Find the actual stored username (encrypted or unencrypted)
+        row = _find_user_row(username)
+        if not row:
+            return False
+            
+        stored_username = row[0]  # Use the actual stored username
+        
         with get_db() as conn:
             c = conn.cursor()
-            encrypted_username = encrypt_data(username)
-            c.execute('UPDATE users SET password_hash=? WHERE username=?', (new_password_hash, encrypted_username))
+            c.execute('UPDATE users SET password_hash=? WHERE username=?', (new_password_hash, stored_username))
             conn.commit()
         return True
     except:
@@ -202,6 +241,48 @@ def add_traveller(first_name, last_name, birthday, gender, street_name, house_nu
         return customer_id
     except Exception as e:
         print(f"Error adding traveller: {e}")
+        return None
+
+def get_traveller_by_id(customer_id):
+    """Get a single traveller by customer_id"""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM travellers WHERE customer_id=?', (customer_id,))
+        row = c.fetchone()
+        if row:
+            try:
+                return {
+                    'customer_id': row[0],
+                    'first_name': row[1],
+                    'last_name': row[2],
+                    'birthday': row[3],
+                    'gender': row[4],
+                    'street_name': decrypt_data(row[5]),
+                    'house_number': decrypt_data(row[6]),
+                    'zip_code': row[7],
+                    'city': row[8],
+                    'email_address': decrypt_data(row[9]),
+                    'mobile_phone': decrypt_data(row[10]),
+                    'driving_license_number': row[11],
+                    'registration_date': row[12]
+                }
+            except:
+                # Handle legacy unencrypted data
+                return {
+                    'customer_id': row[0],
+                    'first_name': row[1],
+                    'last_name': row[2],
+                    'birthday': row[3],
+                    'gender': row[4],
+                    'street_name': row[5],
+                    'house_number': row[6],
+                    'zip_code': row[7],
+                    'city': row[8],
+                    'email_address': row[9],
+                    'mobile_phone': row[10],
+                    'driving_license_number': row[11],
+                    'registration_date': row[12]
+                }
         return None
 
 def get_all_travellers():
@@ -277,7 +358,9 @@ def update_traveller(customer_id, **kwargs):
             query = f"UPDATE travellers SET {', '.join(update_fields)} WHERE customer_id=?"
             c.execute(query, values)
             conn.commit()
-        return True
+            
+            # Check if any rows were affected
+            return c.rowcount > 0
     except Exception as e:
         print(f"Error updating traveller: {e}")
         return False
@@ -288,8 +371,11 @@ def delete_traveller(customer_id):
             c = conn.cursor()
             c.execute('DELETE FROM travellers WHERE customer_id=?', (customer_id,))
             conn.commit()
-        return True
-    except:
+            
+            # Check if any rows were affected
+            return c.rowcount > 0
+    except Exception as e:
+        print(f"Error deleting traveller: {e}")
         return False
 
 # Scooter management functions
@@ -309,6 +395,29 @@ def add_scooter(brand, model, serial_number, top_speed, battery_capacity,
     except Exception as e:
         print(f"Error adding scooter: {e}")
         return False
+
+def get_scooter_by_serial(serial_number):
+    """Get a single scooter by serial number"""
+    with get_db() as conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM scooters WHERE serial_number=?', (serial_number,))
+        row = c.fetchone()
+        if row:
+            return {
+                'serial_number': row[0],
+                'brand': row[1],
+                'model': row[2],
+                'top_speed': row[3],
+                'battery_capacity': row[4],
+                'state_of_charge': row[5],
+                'target_range_soc': row[6],
+                'location': row[7],
+                'out_of_service_status': row[8],
+                'mileage': row[9],
+                'last_maintenance_date': row[10],
+                'in_service_date': row[11]
+            }
+        return None
 
 def get_all_scooters():
     with get_db() as conn:
@@ -372,7 +481,9 @@ def update_scooter(serial_number, user_role, **kwargs):
             query = f"UPDATE scooters SET {', '.join(update_fields)} WHERE serial_number=?"
             c.execute(query, values)
             conn.commit()
-        return True
+            
+            # Check if any rows were affected
+            return c.rowcount > 0
     except Exception as e:
         print(f"Error updating scooter: {e}")
         return False
@@ -383,8 +494,11 @@ def delete_scooter(serial_number):
             c = conn.cursor()
             c.execute('DELETE FROM scooters WHERE serial_number=?', (serial_number,))
             conn.commit()
-        return True
-    except:
+            
+            # Check if any rows were affected
+            return c.rowcount > 0
+    except Exception as e:
+        print(f"Error deleting scooter: {e}")
         return False
 
 # Restore code management
