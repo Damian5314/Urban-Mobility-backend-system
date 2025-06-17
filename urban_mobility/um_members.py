@@ -81,7 +81,7 @@ def get_role_menu(role: str) -> list:
             ("Uitloggen", "logout")
         ],
         'system_admin': [
-            ("Service Engineer beheer", "service_engineer_management"),
+            ("Gebruikersbeheer", "user_management"),
             ("Reiziger beheer", "traveller_management"),
             ("Scooter beheer", "scooter_management"), 
             ("Systeem logs bekijken", "view_logs"),
@@ -93,7 +93,6 @@ def get_role_menu(role: str) -> list:
         'service_engineer': [
             ("Scooter informatie zoeken", "search_scooters"),
             ("Scooter informatie bijwerken", "update_scooter_info"),
-            ("Reiziger informatie zoeken", "search_travellers"),
             ("Wachtwoord wijzigen", "change_password"),
             ("Uitloggen", "logout")
         ]
@@ -160,7 +159,9 @@ def user_management_menu(username: str, role: str):
         elif choice == "3":
             update_existing_user(username, role)
         elif choice == "4":
-            delete_existing_user(username, role)
+            result = delete_existing_user(username, role)
+            if result == "force_logout":
+                return "force_logout"  # Propagate logout signal
         elif choice == "5":
             reset_user_password_interactive(username, role)
         else:
@@ -361,8 +362,12 @@ def delete_existing_user(current_username: str, current_role: str):
         pause()
         return
     
-    if username.lower() == current_username.lower():
-        print("❌ Je kunt jezelf niet verwijderen")
+    # Check if user wants to delete themselves
+    is_self_deletion = username.lower() == current_username.lower()
+    
+    # Super admin cannot delete themselves, but system admin can
+    if is_self_deletion and current_role == 'super_admin':
+        print("❌ Super Administrator kan zichzelf niet verwijderen")
         pause()
         return
     
@@ -381,14 +386,51 @@ def delete_existing_user(current_username: str, current_role: str):
             pause()
             return
         
-        # Confirmation
+        # Show user details
         name = f"{user_to_delete['first_name']} {user_to_delete['last_name']}"
-        confirm = input(f"⚠️  Weet je zeker dat je gebruiker {name} ({username}) wilt verwijderen? (ja/nee): ").strip().lower()
+        print(f"\nGebruiker gegevens:")
+        print(f"👤 Naam: {name}")
+        print(f"🎭 Rol: {user_to_delete['role']}")
+        print(f"📧 Username: {username}")
         
-        if confirm not in ['ja', 'j', 'yes', 'y']:
-            print("Verwijdering geannuleerd")
-            pause()
-            return
+        # Extra confirmation for self-deletion
+        if is_self_deletion:
+            print("\n⚠️  WAARSCHUWING: Je staat op het punt je eigen account te verwijderen!")
+            print("   Dit betekent dat je direct wordt uitgelogd en geen toegang meer hebt tot het systeem.")
+            
+            # First confirmation with retry loop
+            while True:
+                confirm1 = input("\n⚠️  Weet je ZEKER dat je je eigen account wilt verwijderen? (typ 'ja zeker' of 'nee'): ").strip()
+                if confirm1.upper() == 'JA ZEKER':
+                    break  # Continue to next confirmation
+                elif confirm1.upper() == 'NEE' or confirm1.upper() == 'N':
+                    print("Verwijdering geannuleerd")
+                    pause()
+                    return
+                else:
+                    print("❌ Ongeldige input. Typ 'ja zeker' om door te gaan of 'nee' om te annuleren.")
+                    continue
+            
+            # Second confirmation with retry loop
+            while True:
+                confirm2 = input(f"\n⚠️  Laatste bevestiging: Typ je gebruikersnaam '{username}' om te bevestigen (of 'nee' om te annuleren): ").strip()
+                if confirm2 == username:
+                    break  # Continue to deletion
+                elif confirm2.upper() == 'NEE' or confirm2.upper() == 'N':
+                    print("Verwijdering geannuleerd")
+                    pause()
+                    return
+                else:
+                    print(f"❌ Ongeldige input. Typ exact '{username}' om te bevestigen of 'nee' om te annuleren.")
+                    continue
+        else:
+            # Regular confirmation for other users
+            confirm = input(f"\n⚠️  Weet je zeker dat je gebruiker {name} ({username}) wilt verwijderen? (ja/nee): ").strip().lower()
+            
+            if confirm not in ['ja', 'j', 'yes', 'y']:
+                print("Verwijdering geannuleerd")
+                pause()
+                return
         
         # Delete user
         success = delete_user(username)
@@ -396,6 +438,13 @@ def delete_existing_user(current_username: str, current_role: str):
         if success:
             print("✅ Gebruiker succesvol verwijderd")
             log_event(f"Gebruiker verwijderd", current_username, f"Verwijderde gebruiker: {username}")
+            
+            # If user deleted themselves, force logout
+            if is_self_deletion:
+                print("\n🔓 Je bent automatisch uitgelogd omdat je je eigen account hebt verwijderd.")
+                print("👋 Tot ziens!")
+                pause()
+                return "force_logout"  # Return special value to trigger logout
         else:
             print("❌ Fout bij verwijderen gebruiker")
     except Exception as e:
@@ -1595,7 +1644,7 @@ def revoke_restore_code_interactive_menu(username: str):
 # ============================================================================
 
 def view_logs_menu(username: str, role: str):
-    """View system logs in formatted table"""
+    """View system logs in formatted table with pagination"""
     clear_screen()
     show_header("Systeem Logs")
     
@@ -1603,15 +1652,35 @@ def view_logs_menu(username: str, role: str):
         logs = get_logs()
         if not logs:
             print("Geen logs gevonden.")
-        else:
+            pause()
+            return
+        
+        # Pagination settings
+        logs_per_page = 25
+        total_pages = (len(logs) + logs_per_page - 1) // logs_per_page
+        current_page = 1
+        
+        while True:
+            clear_screen()
+            show_header("Systeem Logs")
+            
+            # Calculate start and end indices for current page
+            start_idx = (current_page - 1) * logs_per_page
+            end_idx = min(start_idx + logs_per_page, len(logs))
+            current_logs = logs[start_idx:end_idx]
+            
+            # Show page info
+            print(f"📄 Pagina {current_page} van {total_pages} (logs {start_idx + 1}-{end_idx} van {len(logs)})")
+            print()
+            
             # Define column widths for better formatting
             widths = [5, 20, 15, 40, 8]
             headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
             
             show_table_header(headers, widths)
             
-            # Show last 25 logs
-            for i, log in enumerate(logs[:25], 1):
+            # Show current page logs
+            for i, log in enumerate(current_logs, start_idx + 1):
                 username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
                 desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
                 suspicious = "⚠️ JA" if log['suspicious'] else "NEE"
@@ -1619,19 +1688,112 @@ def view_logs_menu(username: str, role: str):
                 values = [i, log['timestamp'], username_short, desc_short, suspicious]
                 print(format_table_row(values, widths))
             
-            if len(logs) > 25:
-                print(f"\n... en {len(logs) - 25} meer logs")
+            # Show navigation options
+            print("\nNavigatie opties:")
+            nav_options = []
+            
+            if current_page > 1:
+                nav_options.append("(v) Vorige pagina")
+            if current_page < total_pages:
+                nav_options.append("(n) Volgende pagina")
+            
+            nav_options.extend([
+                "(a) Alle logs tonen",
+                "(s) Alleen verdachte logs tonen", 
+                "(g) Ga naar pagina",
+                "(t) Terug naar hoofdmenu"
+            ])
+            
+            for option in nav_options:
+                print(f"  {option}")
             
             # Show suspicious activity summary
             suspicious_logs = [log for log in logs if log['suspicious']]
             if suspicious_logs:
-                print(f"\n⚠️  Verdachte activiteiten: {len(suspicious_logs)}")
-                print("De volgende activiteiten zijn gemarkeerd als verdacht:")
-                for log in suspicious_logs[:5]:  # Show first 5 suspicious logs
-                    print(f"   • {log['timestamp']} - {log['description']}")
+                print(f"\n⚠️  Totaal verdachte activiteiten: {len(suspicious_logs)}")
+            
+            # Get user choice
+            choice = input("\nKies een optie: ").strip().lower()
+            
+            if choice == 't' or check_back_command(choice):
+                break
+            elif choice == 'v' and current_page > 1:
+                current_page -= 1
+            elif choice == 'n' and current_page < total_pages:
+                current_page += 1
+            elif choice == 'g':
+                try:
+                    page_num = int(input(f"Ga naar pagina (1-{total_pages}): "))
+                    if 1 <= page_num <= total_pages:
+                        current_page = page_num
+                    else:
+                        print(f"❌ Ongeldige pagina. Kies tussen 1 en {total_pages}.")
+                        pause()
+                except ValueError:
+                    print("❌ Voer een geldig paginanummer in.")
+                    pause()
+            elif choice == 'a':
+                show_all_logs(logs)
+            elif choice == 's':
+                show_suspicious_logs_only(suspicious_logs)
+            else:
+                print("❌ Ongeldige keuze.")
+                pause()
+    
     except Exception as e:
         print(f"❌ Fout bij ophalen logs: {e}")
+        pause()
+
+def show_all_logs(logs):
+    """Show all logs without pagination"""
+    clear_screen()
+    show_header("Alle Systeem Logs")
     
+    print(f"📋 Totaal {len(logs)} logs:\n")
+    
+    # Define column widths
+    widths = [5, 20, 15, 40, 8]
+    headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
+    
+    show_table_header(headers, widths)
+    
+    for i, log in enumerate(logs, 1):
+        username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
+        desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
+        suspicious = "⚠️ JA" if log['suspicious'] else "NEE"
+        
+        values = [i, log['timestamp'], username_short, desc_short, suspicious]
+        print(format_table_row(values, widths))
+    
+    print(f"\n📊 Overzicht: {len(logs)} logs getoond")
+    pause()
+
+def show_suspicious_logs_only(suspicious_logs):
+    """Show only suspicious logs"""
+    clear_screen()
+    show_header("Verdachte Activiteiten")
+    
+    if not suspicious_logs:
+        print("✅ Geen verdachte activiteiten gevonden.")
+        pause()
+        return
+    
+    print(f"⚠️  {len(suspicious_logs)} verdachte activiteiten gevonden:\n")
+    
+    # Define column widths
+    widths = [5, 20, 15, 40]
+    headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving']
+    
+    show_table_header(headers, widths)
+    
+    for i, log in enumerate(suspicious_logs, 1):
+        username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
+        desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
+        
+        values = [i, log['timestamp'], username_short, desc_short]
+        print(format_table_row(values, widths))
+    
+    print(f"\n⚠️  Totaal {len(suspicious_logs)} verdachte activiteiten")
     pause()
 
 # ============================================================================
@@ -1826,17 +1988,15 @@ def main():
                         print("👋 Tot ziens!")
                         sys.exit(0)
                     elif action == "user_management":
-                        user_management_menu(actual_username, role)
-                    elif action == "service_engineer_management":
-                        user_management_menu(actual_username, role)  # Same menu, different permissions
+                        result = user_management_menu(actual_username, role)
+                        if result == "force_logout":
+                            break  # Exit to login screen
                     elif action == "traveller_management":
                         traveller_management_menu(actual_username, role)
                     elif action == "scooter_management":
                         scooter_management_menu(actual_username, role)
                     elif action == "search_scooters":
                         search_scooters_menu()
-                    elif action == "search_travellers":
-                        search_travellers_menu()
                     elif action == "update_scooter_info":
                         update_scooter_menu(actual_username, role)
                     elif action == "view_logs":
