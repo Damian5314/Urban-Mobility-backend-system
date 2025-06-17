@@ -52,7 +52,7 @@ def login(username: str, password: str) -> tuple[str, str] | None:
     
     # Handle super admin login
     if username == SUPER_ADMIN['username'] and password == SUPER_ADMIN['password']:
-        log_event(f"Succesvolle login", username, f"Rol: {SUPER_ADMIN['role']}", suspicious)
+        log_event(f"Succesvol ingelogd", username, f"Rol: {SUPER_ADMIN['role']}", suspicious)
         # Clear failed attempts on successful login
         if username in failed_attempts:
             del failed_attempts[username]
@@ -61,7 +61,7 @@ def login(username: str, password: str) -> tuple[str, str] | None:
     # Handle regular user login
     user = get_user_by_username(username)
     if user and check_password(password, user['password_hash']):
-        log_event(f"Succesvolle login", username, f"Rol: {user['role']}", suspicious)
+        log_event(f"Succesvol ingelogd", username, f"Rol: {user['role']}", suspicious)
         # Clear failed attempts on successful login
         if username in failed_attempts:
             del failed_attempts[username]
@@ -72,7 +72,7 @@ def login(username: str, password: str) -> tuple[str, str] | None:
         additional_info = f"Gebruikersnaam: {username}"
         if is_suspicious_login_attempt(username):
             additional_info += " - Meerdere mislukte pogingen gedetecteerd"
-        log_event(f"Mislukte login poging", "", additional_info, suspicious)
+        log_event(f"Mislukte inlogpoging", "", additional_info, suspicious)
         return None
 
 def register_user(username: str, password: str, role: str, first_name: str, last_name: str, 

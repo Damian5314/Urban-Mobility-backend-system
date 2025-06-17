@@ -42,25 +42,31 @@ def create_backup(username: str) -> str:
             if os.path.exists(key_file):
                 zipf.write(key_file, os.path.basename(key_file))
             
+            # Add salt file
+            salt_file = 'data/salt.key'
+            if os.path.exists(salt_file):
+                zipf.write(salt_file, os.path.basename(salt_file))
+            
             # Add log file if it exists
             if os.path.exists(LOG_FILE):
                 zipf.write(LOG_FILE, os.path.basename(LOG_FILE))
             
             # Add backup metadata
-            metadata = f"""Backup Information
-Created: {datetime.now().isoformat()}
-Created by: {username}
+            metadata = f"""Backup Informatie
+Aangemaakt: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}
+Aangemaakt door: {username}
 Database: {DB_FILE}
-Size: {os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0} bytes
+Grootte: {os.path.getsize(DB_FILE) if os.path.exists(DB_FILE) else 0} bytes
+Versie: Urban Mobility Backend System v1.0
 """
             zipf.writestr("backup_info.txt", metadata)
         
-        log_event(f"Backup succesvol gemaakt", username, f"Backup bestand: {backup_name}")
+        log_event(f"Backup succesvol aangemaakt", username, f"Backup bestand: {backup_name}")
         return backup_name
         
     except Exception as e:
-        log_event(f"Backup maken mislukt", username, f"Fout: {str(e)}", suspicious=False)
-        raise Exception(f"Fout bij maken backup: {e}")
+        log_event(f"Backup aanmaken mislukt", username, f"Fout: {str(e)}", suspicious=False)
+        raise Exception(f"Fout bij aanmaken backup: {e}")
 
 def list_backups() -> list:
     """
@@ -87,7 +93,8 @@ def list_backups() -> list:
                     'filepath': filepath,
                     'size': size,
                     'created': created,
-                    'creator': 'Unknown'
+                    'creator': 'Onbekend',
+                    'size_mb': round(size / (1024 * 1024), 2)
                 }
                 
                 try:
@@ -96,7 +103,10 @@ def list_backups() -> list:
                             info_content = zipf.read('backup_info.txt').decode('utf-8')
                             # Parse creator from backup info
                             for line in info_content.split('\n'):
-                                if line.startswith('Created by:'):
+                                if 'Aangemaakt door:' in line:
+                                    backup_info['creator'] = line.split(':', 1)[1].strip()
+                                    break
+                                elif 'Created by:' in line:  # Fallback for English
                                     backup_info['creator'] = line.split(':', 1)[1].strip()
                                     break
                 except:
@@ -154,7 +164,7 @@ def restore_backup(backup_filename: str, username: str, restore_code: str = None
     
     try:
         # Create backup of current state before restoring
-        current_backup = create_backup(f"auto_before_restore_{username}")
+        current_backup = create_backup(f"auto_voor_restore_{username}")
         
         # Extract backup
         ensure_data_dir()
@@ -170,6 +180,10 @@ def restore_backup(backup_filename: str, username: str, restore_code: str = None
             # Extract encryption key if present
             if 'fernet.key' in contents:
                 zipf.extract('fernet.key', DATA_DIR)
+            
+            # Extract salt if present
+            if 'salt.key' in contents:
+                zipf.extract('salt.key', DATA_DIR)
             
             # Extract logs if present
             if 'logs.db' in contents:
@@ -215,6 +229,7 @@ def get_backup_info(backup_filename: str) -> dict:
     info = {
         'filename': backup_filename,
         'size': os.path.getsize(backup_path),
+        'size_mb': round(os.path.getsize(backup_path) / (1024 * 1024), 2),
         'created': datetime.fromtimestamp(os.path.getctime(backup_path)),
         'contents': [],
         'metadata': {}
@@ -236,7 +251,7 @@ def get_backup_info(backup_filename: str) -> dict:
     
     return info
 
-def cleanup_old_backups(keep_count: int = 10, username: str = "system") -> int:
+def cleanup_old_backups(keep_count: int = 10, username: str = "systeem") -> int:
     """
     Clean up old backup files, keeping only the most recent ones
     
@@ -311,5 +326,30 @@ def create_incremental_backup(username: str, last_backup_date: datetime = None) 
     Currently creates full backup but logs it as incremental
     """
     backup_name = create_backup(username)
-    log_event(f"Incrementele backup gemaakt", username, f"Backup: {backup_name}")
+    log_event(f"Incrementele backup aangemaakt", username, f"Backup: {backup_name}")
     return backup_name
+
+def get_backup_statistics() -> dict:
+    """
+    Get backup statistics
+    """
+    backups = list_backups()
+    
+    if not backups:
+        return {
+            'total_backups': 0,
+            'total_size_mb': 0,
+            'oldest_backup': None,
+            'newest_backup': None,
+            'average_size_mb': 0
+        }
+    
+    total_size = sum(backup['size'] for backup in backups)
+    
+    return {
+        'total_backups': len(backups),
+        'total_size_mb': round(total_size / (1024 * 1024), 2),
+        'oldest_backup': backups[-1]['created'].strftime('%d-%m-%Y %H:%M'),
+        'newest_backup': backups[0]['created'].strftime('%d-%m-%Y %H:%M'),
+        'average_size_mb': round((total_size / len(backups)) / (1024 * 1024), 2)
+    }

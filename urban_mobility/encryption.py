@@ -72,10 +72,10 @@ def create_new_key() -> bytes:
         if hasattr(os, 'chmod'):
             os.chmod(KEY_PATH, 0o600)  # Read/write for owner only
         
-        print("New encryption key generated and saved securely.")
+        print("Nieuwe encryptie sleutel gegenereerd en veilig opgeslagen.")
         return key
     except Exception as e:
-        raise Exception(f"Failed to save encryption key: {e}")
+        raise Exception(f"Fout bij opslaan encryptie sleutel: {e}")
 
 def load_or_create_salt() -> bytes:
     """Load existing salt or create a new one"""
@@ -100,9 +100,9 @@ try:
     key = load_or_create_key()
     fernet = Fernet(key)
     salt = load_or_create_salt()
-    print("Encryption system initialized and validated successfully.")
+    print("✅ Encryptie systeem geïnitialiseerd en gevalideerd.")
 except Exception as e:
-    print(f"Fatal error initializing encryption: {e}")
+    print(f"❌ Fatale fout bij initialiseren encryptie: {e}")
     raise
 
 def encrypt_data(data: str) -> str:
@@ -125,7 +125,7 @@ def encrypt_data(data: str) -> str:
         encrypted_bytes = fernet.encrypt(data.encode('utf-8'))
         return encrypted_bytes.decode('utf-8')
     except Exception as e:
-        print(f"Encryption failed for data: {e}")
+        print(f"Encryptie mislukt voor data: {e}")
         return data  # Return original data if encryption fails
 
 def decrypt_data(encrypted_data: str) -> str:
@@ -170,7 +170,7 @@ def encrypt_sensitive_fields(data_dict: dict, sensitive_fields: list) -> dict:
             try:
                 encrypted_dict[field] = encrypt_data(str(encrypted_dict[field]))
             except Exception as e:
-                print(f"Warning: Failed to encrypt field {field}: {e}")
+                print(f"Waarschuwing: Encryptie mislukt voor veld {field}: {e}")
     
     return encrypted_dict
 
@@ -246,7 +246,7 @@ def encrypt_file_content(file_path: str, output_path: Optional[str] = None) -> b
         
         return True
     except Exception as e:
-        print(f"File encryption failed: {e}")
+        print(f"Bestand encryptie mislukt: {e}")
         return False
 
 def decrypt_file_content(encrypted_file_path: str, output_path: Optional[str] = None) -> bool:
@@ -280,7 +280,7 @@ def decrypt_file_content(encrypted_file_path: str, output_path: Optional[str] = 
         
         return True
     except Exception as e:
-        print(f"File decryption failed: {e}")
+        print(f"Bestand decryptie mislukt: {e}")
         return False
 
 def validate_encryption_setup() -> bool:
@@ -290,7 +290,7 @@ def validate_encryption_setup() -> bool:
     Returns:
         True if encryption/decryption works, False otherwise
     """
-    test_data = "Test encryption string 123!@#"
+    test_data = "Test encryptie string 123!@#"
     
     try:
         # Test basic encryption/decryption
@@ -308,7 +308,7 @@ def validate_encryption_setup() -> bool:
             return False
         
         # Test unicode characters
-        unicode_test = "Test with unicode: áéíóú ñ 中文 🚀"
+        unicode_test = "Test met unicode: áéíóú ñ 中文 🚀"
         encrypted_unicode = encrypt_data(unicode_test)
         decrypted_unicode = decrypt_data(encrypted_unicode)
         
@@ -317,7 +317,7 @@ def validate_encryption_setup() -> bool:
         
         return True
     except Exception as e:
-        print(f"Encryption validation failed: {e}")
+        print(f"Encryptie validatie mislukt: {e}")
         return False
 
 def get_encryption_info() -> dict:
@@ -358,12 +358,12 @@ def rotate_encryption_key() -> bool:
         global fernet
         fernet = Fernet(new_key)
         
-        print("Encryption key rotated successfully.")
-        print("WARNING: Previously encrypted data cannot be decrypted with the new key!")
+        print("Encryptie sleutel succesvol geroteerd.")
+        print("WAARSCHUWING: Eerder versleutelde data kan niet meer ontsleuteld worden met de nieuwe sleutel!")
         
         return True
     except Exception as e:
-        print(f"Key rotation failed: {e}")
+        print(f"Sleutel rotatie mislukt: {e}")
         return False
 
 # Security utility functions
@@ -396,9 +396,9 @@ def secure_delete_file(file_path: str) -> bool:
         os.remove(file_path)
         return True
     except Exception as e:
-        print(f"Secure file deletion failed: {e}")
+        print(f"Veilig bestand verwijderen mislukt: {e}")
         return False
 
 # Test encryption on import
 if not validate_encryption_setup():
-    print("WARNING: Encryption validation failed! System may not be secure.")
+    print("⚠️ WAARSCHUWING: Encryptie validatie mislukt! Systeem is mogelijk niet veilig.")

@@ -91,6 +91,28 @@ def validate_gps_coordinates(latitude: str, longitude: str) -> bool:
     except ValueError:
         return False
 
+def validate_flexible_gps_coordinate(coord_str: str, coord_type: str) -> bool:
+    """
+    Flexible GPS coordinate validation
+    coord_type: 'lat' for latitude, 'lon' for longitude
+    """
+    if not coord_str:
+        return False
+    
+    try:
+        coord = float(coord_str)
+        
+        if coord_type == 'lat':
+            # Latitude: flexible range around Netherlands
+            return 50.0 <= coord <= 54.0
+        elif coord_type == 'lon':
+            # Longitude: flexible range around Netherlands
+            return 3.0 <= coord <= 8.0
+        
+        return True
+    except ValueError:
+        return False
+
 def validate_serial_number(serial: str) -> bool:
     """
     Validate scooter serial number: 10-17 alphanumeric characters
@@ -109,15 +131,107 @@ def validate_date_iso(date_str: str) -> bool:
     except ValueError:
         return False
 
-def validate_birthday(birthday: str) -> bool:
+def validate_date_dutch(date_str: str) -> bool:
     """
-    Validate birthday date (must be in the past and reasonable)
+    Validate date in Dutch format: DD-MM-YYYY
     """
-    if not validate_date_iso(birthday):
+    try:
+        datetime.strptime(date_str, '%d-%m-%Y')
+        return True
+    except ValueError:
+        return False
+
+def validate_flexible_date(date_str: str) -> bool:
+    """
+    Validate date in multiple flexible formats
+    Accepts: DD-MM-YYYY, DD/MM/YYYY, DD.MM.YYYY, DD-MM-YY, DD/MM/YY, DD.MM.YY
+    """
+    if not date_str:
+        return False
+    
+    # Try different date formats
+    formats = [
+        '%d-%m-%Y',   # 15-03-2024
+        '%d/%m/%Y',   # 15/03/2024
+        '%d.%m.%Y',   # 15.03.2024
+        '%d-%m-%y',   # 15-03-24
+        '%d/%m/%y',   # 15/03/24
+        '%d.%m.%y',   # 15.03.24
+        '%d %m %Y',   # 15 03 2024
+        '%d %m %y',   # 15 03 24
+    ]
+    
+    for fmt in formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt)
+            # Convert 2-digit years to 4-digit (assume 20xx for years 00-30, 19xx for 31-99)
+            if parsed_date.year < 100:
+                if parsed_date.year <= 30:
+                    parsed_date = parsed_date.replace(year=parsed_date.year + 2000)
+                else:
+                    parsed_date = parsed_date.replace(year=parsed_date.year + 1900)
+            return True
+        except ValueError:
+            continue
+    
+    return False
+
+def convert_dutch_to_iso(dutch_date: str) -> str:
+    """
+    Convert Dutch date format (DD-MM-YYYY) to ISO format (YYYY-MM-DD)
+    """
+    try:
+        date_obj = datetime.strptime(dutch_date, '%d-%m-%Y')
+        return date_obj.strftime('%Y-%m-%d')
+    except ValueError:
+        return ""
+
+def convert_iso_to_dutch(iso_date: str) -> str:
+    """
+    Convert ISO date format (YYYY-MM-DD) to Dutch format (DD-MM-YYYY)
+    """
+    try:
+        date_obj = datetime.strptime(iso_date, '%Y-%m-%d')
+        return date_obj.strftime('%d-%m-%Y')
+    except ValueError:
+        return iso_date
+
+def convert_flexible_date_to_iso(date_str: str) -> str:
+    """
+    Convert flexible date format to ISO format (YYYY-MM-DD)
+    """
+    if not date_str:
+        return ""
+    
+    formats = [
+        '%d-%m-%Y', '%d/%m/%Y', '%d.%m.%Y', '%d-%m-%y', 
+        '%d/%m/%y', '%d.%m.%y', '%d %m %Y', '%d %m %y'
+    ]
+    
+    for fmt in formats:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt)
+            # Convert 2-digit years
+            if parsed_date.year < 100:
+                if parsed_date.year <= 30:
+                    parsed_date = parsed_date.replace(year=parsed_date.year + 2000)
+                else:
+                    parsed_date = parsed_date.replace(year=parsed_date.year + 1900)
+            return parsed_date.strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    
+    return ""
+
+def validate_birthday_dutch(birthday: str) -> bool:
+    """
+    Validate birthday date in Dutch format (must be in the past and reasonable)
+    """
+    if not validate_date_dutch(birthday):
         return False
     
     try:
-        birth_date = datetime.strptime(birthday, '%Y-%m-%d')
+        birth_date = datetime.strptime(birthday, '%d-%m-%Y')
         current_date = datetime.now()
         
         # Must be in the past
@@ -269,6 +383,12 @@ def validate_search_term(search_term: str) -> bool:
     # Allow alphanumeric, spaces, and common punctuation
     return bool(re.fullmatch(r"[A-Za-z0-9\s@.\-_']{1,100}", search_term.strip()))
 
+def check_back_command(user_input: str) -> bool:
+    """
+    Check if user wants to go back
+    """
+    return user_input.lower().strip() in ['terug', 'back', 'b', 't', 'exit', 'quit']
+
 # Validation helper functions
 def get_validation_error_message(field: str, value: str) -> str:
     """
@@ -281,15 +401,39 @@ def get_validation_error_message(field: str, value: str) -> str:
         'mobile_phone': 'Telefoonnummer moet 8 cijfers zijn',
         'driving_license': 'Rijbewijsnummer moet format XXDDDDDDD of XDDDDDDDD hebben',
         'email': 'Ongeldig email adres',
-        'birthday': 'Geboortedatum moet geldig zijn en tussen 16-120 jaar geleden',
+        'birthday': 'Geboortedatum moet geldig zijn en tussen 16-120 jaar geleden (DD-MM-YYYY)',
+        'birthday_dutch': 'Geboortedatum moet geldig zijn en tussen 16-120 jaar geleden (DD-MM-YYYY)',
+        'flexible_date': 'Datum moet geldig zijn (bijv. 15-03-2024, 15/03/24, 15.03.2024)',
         'gender': 'Geslacht moet \'male\' of \'female\' zijn',
         'city': 'Stad moet een van de geldige steden zijn',
         'gps': 'GPS coördinaten moeten geldig zijn voor Rotterdam gebied met 5 decimalen',
         'serial_number': 'Serienummer moet 10-17 alfanumerieke tekens zijn',
         'date': 'Datum moet format YYYY-MM-DD hebben',
+        'date_dutch': 'Datum moet format DD-MM-YYYY hebben',
         'percentage': 'Waarde moet tussen 0 en 100 zijn',
         'positive_integer': 'Waarde moet een positief getal zijn',
+        'positive_float': 'Waarde moet een positief getal zijn',
         'name': 'Naam mag alleen letters, spaties, apostroffen en koppeltekens bevatten',
         'search_term': 'Zoekterm bevat ongeldige tekens'
     }
     return error_messages.get(field, f'Ongeldige waarde voor {field}: {value}')
+
+def get_validated_input_with_back(prompt: str, validator_func, validation_type: str, allow_empty: bool = False) -> str:
+    """
+    Get validated input from user with retry on invalid input and back option
+    Returns None if user wants to go back
+    """
+    while True:
+        value = input(f"{prompt}: ").strip()
+        
+        if check_back_command(value):
+            return None
+        
+        if allow_empty and not value:
+            return ""
+        
+        if validator_func(value):
+            return value
+        else:
+            print(f"❌ {get_validation_error_message(validation_type, value)}")
+            print("Probeer opnieuw.")
