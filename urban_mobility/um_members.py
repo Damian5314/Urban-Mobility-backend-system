@@ -15,13 +15,62 @@ from input_validation import *
 import uuid
 import secrets
 
+def get_terminal_width():
+    """Get current terminal width"""
+    try:
+        import shutil
+        return shutil.get_terminal_size().columns
+    except:
+        return 80  # Default fallback
+
+def adjust_table_widths_for_terminal(base_widths: list) -> list:
+    """Adjust table widths based on terminal size"""
+    terminal_width = get_terminal_width()
+    
+    # Calculate total table width needed
+    total_width = sum(base_widths) + len(base_widths) * 3 + 1  # +3 for " | ", +1 for final |
+    
+    # If table is too wide for terminal, reduce widths proportionally
+    if total_width > terminal_width - 5:  # Leave some margin
+        reduction_factor = (terminal_width - 5 - len(base_widths) * 3 - 1) / sum(base_widths)
+        adjusted_widths = [max(3, int(width * reduction_factor)) for width in base_widths]
+        return adjusted_widths
+    
+    return base_widths
+
 def clear_screen():
-    """Clear terminal screen"""
-    os.system('cls' if os.name == 'nt' else 'clear')
+    """Clear terminal screen properly"""
+    import os
+    import sys
+    
+    # Force flush any pending output
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
+    # Clear screen using appropriate command
+    if os.name == 'nt':  # Windows
+        os.system('cls')
+    else:  # Unix/Linux/Mac
+        os.system('clear')
+    
+    # Additional method to ensure clean screen
+    print('\033[2J\033[H', end='', flush=True)
+    
+    # Small delay to ensure screen is cleared
+    import time
+    time.sleep(0.01)
 
 def pause():
-    """Wait for user input"""
-    input("\nDruk Enter om door te gaan...")
+    """Wait for user input and clear any lingering output"""
+    try:
+        input("\nDruk Enter om door te gaan...")
+    except KeyboardInterrupt:
+        pass  # Handle Ctrl+C gracefully
+    
+    # Extra clear to prevent double output
+    import sys
+    sys.stdout.flush()
+    sys.stderr.flush()
 
 def show_header(title: str, show_back_info: bool = True):
     """Show formatted header"""
@@ -33,26 +82,36 @@ def show_header(title: str, show_back_info: bool = True):
         print("-" * 80)
 
 def show_table_header(headers: list, widths: list):
-    """Show formatted table header"""
-    header_line = ""
-    separator_line = ""
+    """Show formatted table header with vertical lines"""
+    header_line = "| "
+    separator_line = "+"
     
     for i, (header, width) in enumerate(zip(headers, widths)):
-        header_line += f"{header:<{width}} "
-        separator_line += "-" * width + " "
+        # Use the specified width consistently
+        header_line += f"{header:<{width}} | "
+        separator_line += "-" * (width + 2) + "+"
     
+    print(separator_line)
     print(header_line)
     print(separator_line)
 
 def format_table_row(values: list, widths: list) -> str:
-    """Format a table row with proper spacing - no truncation"""
-    row = ""
+    """Format a table row with proper spacing and vertical lines"""
+    row = "| "
     for i, (value, width) in enumerate(zip(values, widths)):
-        str_value = str(value)
-        # No truncation - show full text with minimum width
-        actual_width = max(width, len(str_value))
-        row += f"{str_value:<{actual_width}} "
+        str_value = str(value) if value is not None else "..."
+        # Truncate if too long, otherwise pad to width
+        if len(str_value) > width:
+            str_value = str_value[:width-2] + ".."
+        row += f"{str_value:<{width}} | "
     return row
+
+def show_table_footer(widths: list):
+    """Show table footer line"""
+    footer_line = "+"
+    for width in widths:
+        footer_line += "-" * (width + 2) + "+"
+    print(footer_line)
 
 def show_suspicious_alerts(username: str, role: str):
     """Show alerts for suspicious activities"""
@@ -126,7 +185,7 @@ def show_main_menu(username: str, role: str):
             elif choice_num == len(menu_items) + 1:
                 return "exit"
             else:
-                print("Ongeldige keuze, probeer opnieuw.")
+                print(f"Ongeldige keuze, kies tussen 1 en {len(menu_items) + 1}.")
         except ValueError:
             print("Voer een geldig nummer in.")
 
@@ -177,8 +236,9 @@ def view_all_users():
         if not users:
             print("Geen gebruikers gevonden.")
         else:
-            # Define column widths
-            widths = [15, 20, 25, 15]
+            # Define column widths and adjust for terminal
+            base_widths = [15, 20, 25, 15]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Gebruikersnaam', 'Rol', 'Naam', 'Registratie']
             
             show_table_header(headers, widths)
@@ -192,7 +252,8 @@ def view_all_users():
                     user['registration_date']
                 ]
                 print(format_table_row(values, widths))
-                
+            
+            show_table_footer(widths)
             print(f"\nTotaal: {len(users)} gebruikers")
     except Exception as e:
         print(f"❌ Fout bij ophalen gebruikers: {e}")
@@ -205,10 +266,22 @@ def create_new_user(current_username: str, current_role: str):
     show_header("Nieuwe Gebruiker Aanmaken")
     
     try:
-        # Get user details with back option
-        username = get_validated_input_with_back("Gebruikersnaam (8-10 tekens)", validate_username, "username")
-        if username is None:
-            return
+        # Get user details with back option and username uniqueness check
+        while True:
+            username = get_validated_input_with_back("Gebruikersnaam (8-10 tekens)", validate_username, "username")
+            if username is None:
+                return
+            
+            # Check if username already exists (case-insensitive)
+            existing_users = get_all_users()
+            username_exists = any(u['username'].lower() == username.lower() for u in existing_users)
+            
+            if username_exists:
+                print(f"❌ Gebruikersnaam '{username}' bestaat al. Kies een andere gebruikersnaam.")
+                continue
+            else:
+                print(f"✅ Gebruikersnaam '{username}' is beschikbaar.")
+                break
         
         password = get_validated_input_with_back("Wachtwoord (12-30 tekens, complex)", validate_password, "password")
         if password is None:
@@ -541,8 +614,9 @@ def view_all_travellers_menu():
         if not travellers:
             print("Geen reizigers gevonden.")
         else:
-            # Define column widths for better formatting
-            widths = [12, 25, 30, 15, 12]
+            # Define column widths and adjust for terminal
+            base_widths = [12, 25, 30, 15, 12]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Customer ID', 'Naam', 'Email', 'Telefoon', 'Stad']
             
             show_table_header(headers, widths)
@@ -553,6 +627,7 @@ def view_all_travellers_menu():
                 values = [t['customer_id'], name, t['email_address'], phone, t['city']]
                 print(format_table_row(values, widths))
             
+            show_table_footer(widths)
             print(f"\nTotaal: {len(travellers)} reizigers")
     except Exception as e:
         print(f"❌ Fout bij ophalen reizigers: {e}")
@@ -576,7 +651,8 @@ def search_travellers_menu():
         else:
             print(f"\n{len(results)} resultaten gevonden voor '{search_term}':")
             
-            widths = [12, 25, 30, 15]
+            base_widths = [12, 25, 30, 15]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Customer ID', 'Naam', 'Email', 'Telefoon']
             
             show_table_header(headers, widths)
@@ -586,6 +662,8 @@ def search_travellers_menu():
                 phone = f"+31-6-{t['mobile_phone']}"
                 values = [t['customer_id'], name, t['email_address'], phone]
                 print(format_table_row(values, widths))
+            
+            show_table_footer(widths)
     except Exception as e:
         print(f"❌ Fout bij zoeken reizigers: {e}")
     
@@ -998,8 +1076,9 @@ def view_all_scooters_menu():
         if not scooters:
             print("Geen scooters gevonden.")
         else:
-            # Define column widths for better formatting
-            widths = [17, 12, 15, 10, 10, 20, 12]
+            # Define column widths and adjust for terminal
+            base_widths = [17, 12, 15, 10, 10, 20, 12]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Serienummer', 'Merk', 'Model', 'Batterij %', 'Km-stand', 'Locatie', 'Status']
             
             show_table_header(headers, widths)
@@ -1015,6 +1094,7 @@ def view_all_scooters_menu():
                 ]
                 print(format_table_row(values, widths))
             
+            show_table_footer(widths)
             print(f"\nTotaal: {len(scooters)} scooters")
             
             # Quick statistics
@@ -1044,7 +1124,8 @@ def search_scooters_menu():
         else:
             print(f"\n{len(results)} resultaten gevonden voor '{search_term}':")
             
-            widths = [17, 12, 15, 10, 12]
+            base_widths = [17, 12, 15, 10, 12]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Serienummer', 'Merk', 'Model', 'Batterij %', 'Status']
             
             show_table_header(headers, widths)
@@ -1053,6 +1134,8 @@ def search_scooters_menu():
                 status = "Buiten dienst" if s['out_of_service_status'] else "In dienst"
                 values = [s['serial_number'], s['brand'], s['model'], f"{s['state_of_charge']}%", status]
                 print(format_table_row(values, widths))
+            
+            show_table_footer(widths)
     except Exception as e:
         print(f"❌ Fout bij zoeken scooters: {e}")
     
@@ -1530,8 +1613,9 @@ def view_available_backups():
         if not backups:
             print("Geen backups gevonden.")
         else:
-            # Define column widths for better formatting
-            widths = [25, 20, 12, 15]
+            # Define column widths and adjust for terminal
+            base_widths = [25, 20, 12, 15]
+            widths = adjust_table_widths_for_terminal(base_widths)
             headers = ['Bestandsnaam', 'Aangemaakt', 'Grootte (MB)', 'Door']
             
             show_table_header(headers, widths)
@@ -1546,6 +1630,7 @@ def view_available_backups():
                 ]
                 print(format_table_row(values, widths))
             
+            show_table_footer(widths)
             print(f"\nTotaal: {len(backups)} backups")
     except Exception as e:
         print(f"❌ Fout bij ophalen backups: {e}")
@@ -1859,7 +1944,7 @@ def revoke_restore_code_interactive_menu(username: str):
     pause()
 
 # ============================================================================
-# LOGGING FUNCTIONS
+# VERBETERDE LOGGING FUNCTIONS
 # ============================================================================
 
 def view_logs_menu(username: str, role: str):
@@ -1892,22 +1977,35 @@ def view_logs_menu(username: str, role: str):
             print(f"📄 Pagina {current_page} van {total_pages} (logs {start_idx + 1}-{end_idx} van {len(logs)})")
             print()
             
-            # Define column widths for better formatting
-            widths = [5, 20, 15, 40, 8]
-            headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
+            # Define column widths - ZONDER Info kolom
+            base_widths = [3, 12, 8, 15, 35, 8]
+            widths = adjust_table_widths_for_terminal(base_widths)
+            headers = ['Nr', 'Datum', 'Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
             
             show_table_header(headers, widths)
             
             # Show current page logs
             for i, log in enumerate(current_logs, start_idx + 1):
-                username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
-                desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
-                suspicious = "⚠️ JA" if log['suspicious'] else "NEE"
+                # Split timestamp into date and time
+                timestamp_parts = log['timestamp'][:19].split('T') if log['timestamp'] else ['...', '...']
+                date_part = timestamp_parts[0] if len(timestamp_parts) > 0 and timestamp_parts[0] else "..."
+                time_part = timestamp_parts[1] if len(timestamp_parts) > 1 and timestamp_parts[1] else "..."
                 
-                values = [i, log['timestamp'], username_short, desc_short, suspicious]
+                username_display = log['username'] if log['username'] and log['username'].strip() else "..."
+                description = log['description'] if log['description'] and log['description'].strip() else "..."
+                suspicious = "Ja" if log['suspicious'] else "Nee"
+                
+                values = [i, date_part, time_part, username_display, description, suspicious]
                 print(format_table_row(values, widths))
             
-            # Show navigation options
+            show_table_footer(widths)
+            
+            # Show suspicious activity summary
+            suspicious_logs = [log for log in logs if log['suspicious']]
+            if suspicious_logs:
+                print(f"\n⚠️  Totaal verdachte activiteiten: {len(suspicious_logs)}")
+            
+            # Show navigation options - ALLEEN HIER, GEEN DUBBELE
             print("\nNavigatie opties:")
             nav_options = []
             
@@ -1925,11 +2023,6 @@ def view_logs_menu(username: str, role: str):
             
             for option in nav_options:
                 print(f"  {option}")
-            
-            # Show suspicious activity summary
-            suspicious_logs = [log for log in logs if log['suspicious']]
-            if suspicious_logs:
-                print(f"\n⚠️  Totaal verdachte activiteiten: {len(suspicious_logs)}")
             
             # Get user choice
             choice = input("\nKies een optie: ").strip().lower()
@@ -1970,20 +2063,27 @@ def show_all_logs(logs):
     
     print(f"📋 Totaal {len(logs)} logs:\n")
     
-    # Define column widths
-    widths = [5, 20, 15, 40, 8]
-    headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
+    # Define column widths - ZONDER Info kolom
+    base_widths = [3, 12, 8, 15, 35, 8]
+    widths = adjust_table_widths_for_terminal(base_widths)
+    headers = ['Nr', 'Datum', 'Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
     
     show_table_header(headers, widths)
     
     for i, log in enumerate(logs, 1):
-        username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
-        desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
-        suspicious = "⚠️ JA" if log['suspicious'] else "NEE"
+        # Split timestamp into date and time
+        timestamp_parts = log['timestamp'][:19].split('T') if log['timestamp'] else ['...', '...']
+        date_part = timestamp_parts[0] if len(timestamp_parts) > 0 and timestamp_parts[0] else "..."
+        time_part = timestamp_parts[1] if len(timestamp_parts) > 1 and timestamp_parts[1] else "..."
         
-        values = [i, log['timestamp'], username_short, desc_short, suspicious]
+        username_display = log['username'] if log['username'] and log['username'].strip() else "..."
+        description = log['description'] if log['description'] and log['description'].strip() else "..."
+        suspicious = "Ja" if log['suspicious'] else "Nee"
+        
+        values = [i, date_part, time_part, username_display, description, suspicious]
         print(format_table_row(values, widths))
     
+    show_table_footer(widths)
     print(f"\n📊 Overzicht: {len(logs)} logs getoond")
     pause()
 
@@ -1999,19 +2099,27 @@ def show_suspicious_logs_only(suspicious_logs):
     
     print(f"⚠️  {len(suspicious_logs)} verdachte activiteiten gevonden:\n")
     
-    # Define column widths
-    widths = [5, 20, 15, 40]
-    headers = ['#', 'Datum/Tijd', 'Gebruiker', 'Beschrijving']
+    # Define column widths - ZONDER Info kolom
+    base_widths = [3, 12, 8, 15, 35, 8]
+    widths = adjust_table_widths_for_terminal(base_widths)
+    headers = ['Nr', 'Datum', 'Tijd', 'Gebruiker', 'Beschrijving', 'Verdacht']
     
     show_table_header(headers, widths)
     
     for i, log in enumerate(suspicious_logs, 1):
-        username_short = log['username'][:13] + "..." if len(log['username']) > 15 else log['username']
-        desc_short = log['description'][:38] + "..." if len(log['description']) > 40 else log['description']
+        # Split timestamp into date and time
+        timestamp_parts = log['timestamp'][:19].split('T') if log['timestamp'] else ['...', '...']
+        date_part = timestamp_parts[0] if len(timestamp_parts) > 0 and timestamp_parts[0] else "..."
+        time_part = timestamp_parts[1] if len(timestamp_parts) > 1 and timestamp_parts[1] else "..."
         
-        values = [i, log['timestamp'], username_short, desc_short]
+        username_display = log['username'] if log['username'] and log['username'].strip() else "..."
+        description = log['description'] if log['description'] and log['description'].strip() else "..."
+        suspicious = "Ja"  # All logs in this function are suspicious
+        
+        values = [i, date_part, time_part, username_display, description, suspicious]
         print(format_table_row(values, widths))
     
+    show_table_footer(widths)
     print(f"\n⚠️  Totaal {len(suspicious_logs)} verdachte activiteiten")
     pause()
 

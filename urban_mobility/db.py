@@ -131,8 +131,13 @@ def get_user_by_username(username: str):
     return None
 
 def add_user(username, password_hash, role, first_name, last_name):
-    """Add new user to database"""
+    """Add new user to database with uniqueness check"""
     try:
+        # Check if username already exists (case-insensitive)
+        existing_user = get_user_by_username(username)
+        if existing_user:
+            return False  # Username already exists
+        
         with get_db() as conn:
             c = conn.cursor()
             # Encrypt sensitive data
@@ -180,8 +185,8 @@ def get_all_users():
         print(f"Error getting all users: {e}")
         return []
 
-def update_user(username, new_first_name=None, new_last_name=None):
-    """Update user information"""
+def update_user(username, **kwargs):
+    """Update user information - supports all fields including role"""
     try:
         # Find the actual stored username (encrypted or unencrypted)
         row = _find_user_row(username)
@@ -192,12 +197,23 @@ def update_user(username, new_first_name=None, new_last_name=None):
         
         with get_db() as conn:
             c = conn.cursor()
-            if new_first_name:
-                c.execute('UPDATE users SET first_name=? WHERE username=?', (new_first_name, stored_username))
-            if new_last_name:
-                c.execute('UPDATE users SET last_name=? WHERE username=?', (new_last_name, stored_username))
+            update_fields = []
+            values = []
+            
+            # Handle all possible update fields
+            for field, value in kwargs.items():
+                if field in ['first_name', 'last_name', 'role']:
+                    update_fields.append(f"{field}=?")
+                    values.append(value)
+            
+            if not update_fields:
+                return False
+                
+            values.append(stored_username)
+            query = f"UPDATE users SET {', '.join(update_fields)} WHERE username=?"
+            c.execute(query, values)
             conn.commit()
-        return True
+            return c.rowcount > 0
     except Exception as e:
         print(f"Error updating user: {e}")
         return False
