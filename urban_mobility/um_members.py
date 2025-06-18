@@ -45,14 +45,13 @@ def show_table_header(headers: list, widths: list):
     print(separator_line)
 
 def format_table_row(values: list, widths: list) -> str:
-    """Format a table row with proper spacing"""
+    """Format a table row with proper spacing - no truncation"""
     row = ""
     for i, (value, width) in enumerate(zip(values, widths)):
-        # Truncate if too long
         str_value = str(value)
-        if len(str_value) > width - 3:
-            str_value = str_value[:width-3] + "..."
-        row += f"{str_value:<{width}} "
+        # No truncation - show full text with minimum width
+        actual_width = max(width, len(str_value))
+        row += f"{str_value:<{actual_width}} "
     return row
 
 def show_suspicious_alerts(username: str, role: str):
@@ -262,7 +261,7 @@ def create_new_user(current_username: str, current_role: str):
     pause()
 
 def update_existing_user(current_username: str, current_role: str):
-    """Update existing user"""
+    """Update existing user - all fields editable"""
     clear_screen()
     show_header("Gebruiker Bijwerken")
     
@@ -292,56 +291,72 @@ def update_existing_user(current_username: str, current_role: str):
             return
         
         print(f"\nHuidige gegevens:")
-        print(f"Naam: {user_to_update['first_name']} {user_to_update['last_name']}")
-        print(f"Rol: {user_to_update['role']}")
+        print(f"👤 Naam: {user_to_update['first_name']} {user_to_update['last_name']}")
+        print(f"🎭 Rol: {user_to_update['role']}")
+        print(f"📧 Username: {user_to_update['username']}")
+        print(f"📅 Geregistreerd: {user_to_update['registration_date']}")
         
         print("\nVoer nieuwe waarden in (laat leeg om ongewijzigd te laten):")
         
-        # First name validation with proper error handling
+        updates = {}
+        
+        # First name validation
         while True:
             new_first_name = input(f"Voornaam ({user_to_update['first_name']}): ").strip()
             if check_back_command(new_first_name):
                 return
             
             if not new_first_name:
-                # Empty is allowed - no change
                 break
             elif validate_name(new_first_name):
+                updates['first_name'] = new_first_name
                 break
             else:
                 print("❌ Ongeldige voornaam. Alleen letters, spaties, apostroffen en koppeltekens toegestaan.")
-                print("Probeer opnieuw of laat leeg.")
         
-        # Last name validation with proper error handling
+        # Last name validation
         while True:
             new_last_name = input(f"Achternaam ({user_to_update['last_name']}): ").strip()
             if check_back_command(new_last_name):
                 return
             
             if not new_last_name:
-                # Empty is allowed - no change
                 break
             elif validate_name(new_last_name):
+                updates['last_name'] = new_last_name
                 break
             else:
                 print("❌ Ongeldige achternaam. Alleen letters, spaties, apostroffen en koppeltekens toegestaan.")
-                print("Probeer opnieuw of laat leeg.")
         
-        # Update user (only if there are actual changes)
-        if new_first_name or new_last_name:
-            success = update_user(
-                username,
-                new_first_name if new_first_name else None,
-                new_last_name if new_last_name else None
-            )
-            
-            if success:
-                print("✅ Gebruiker succesvol bijgewerkt")
-                log_event(f"Gebruiker bijgewerkt", current_username, f"Gebruiker: {username}")
-            else:
-                print("❌ Fout bij bijwerken gebruiker")
-        else:
+        # Role validation (only if super admin)
+        if current_role == 'super_admin':
+            available_roles = ['super_admin', 'system_admin', 'service_engineer']
+            while True:
+                new_role = input(f"Rol ({user_to_update['role']}) - opties: {', '.join(available_roles)}: ").strip()
+                if check_back_command(new_role):
+                    return
+                
+                if not new_role:
+                    break
+                elif new_role in available_roles:
+                    updates['role'] = new_role
+                    break
+                else:
+                    print(f"❌ Ongeldige rol. Kies uit: {', '.join(available_roles)}")
+        
+        if not updates:
             print("Geen wijzigingen opgegeven")
+            pause()
+            return
+        
+        # Apply updates
+        success = update_user(username, **updates)
+        
+        if success:
+            print("✅ Gebruiker succesvol bijgewerkt")
+            log_event(f"Gebruiker bijgewerkt", current_username, f"Gebruiker: {username}, Velden: {list(updates.keys())}")
+        else:
+            print("❌ Fout bij bijwerken gebruiker")
     except Exception as e:
         print(f"❌ Fout bij bijwerken gebruiker: {e}")
     
@@ -650,7 +665,7 @@ def create_traveller_menu(username: str):
     pause()
 
 def update_traveller_menu(username: str):
-    """Update traveller"""
+    """Update traveller - all fields editable"""
     clear_screen()
     show_header("Reiziger Bijwerken")
     
@@ -680,44 +695,173 @@ def update_traveller_menu(username: str):
             return
         
         print(f"\nHuidige gegevens van {current_traveller['first_name']} {current_traveller['last_name']}:")
+        print(f"👤 Naam: {current_traveller['first_name']} {current_traveller['last_name']}")
+        print(f"🎂 Geboortedatum: {current_traveller['birthday']}")
+        print(f"⚧️ Geslacht: {current_traveller['gender']}")
+        print(f"🏠 Adres: {current_traveller['street_name']} {current_traveller['house_number']}, {current_traveller['zip_code']} {current_traveller['city']}")
         print(f"📧 Email: {current_traveller['email_address']}")
         print(f"📱 Telefoon: +31-6-{current_traveller['mobile_phone']}")
-        print(f"🏠 Adres: {current_traveller['street_name']} {current_traveller['house_number']}, {current_traveller['zip_code']} {current_traveller['city']}")
+        print(f"🪪 Rijbewijs: {current_traveller['driving_license_number']}")
         
         # Collect updates
         updates = {}
         
         print("\nVoer nieuwe waarden in (laat leeg om ongewijzigd te laten):")
         
-        # Email validation with proper error handling
+        # First name validation
+        while True:
+            new_first_name = input(f"Voornaam ({current_traveller['first_name']}): ").strip()
+            if check_back_command(new_first_name):
+                return
+            
+            if not new_first_name:
+                break
+            elif validate_name(new_first_name):
+                updates['first_name'] = new_first_name
+                break
+            else:
+                print("❌ Ongeldige voornaam. Alleen letters, spaties, apostroffen en koppeltekens toegestaan.")
+        
+        # Last name validation
+        while True:
+            new_last_name = input(f"Achternaam ({current_traveller['last_name']}): ").strip()
+            if check_back_command(new_last_name):
+                return
+            
+            if not new_last_name:
+                break
+            elif validate_name(new_last_name):
+                updates['last_name'] = new_last_name
+                break
+            else:
+                print("❌ Ongeldige achternaam. Alleen letters, spaties, apostroffen en koppeltekens toegestaan.")
+        
+        # Birthday validation
+        while True:
+            new_birthday = input(f"Geboortedatum ({current_traveller['birthday']}) (bijv. 15-03-1990): ").strip()
+            if check_back_command(new_birthday):
+                return
+            
+            if not new_birthday:
+                break
+            elif validate_flexible_date(new_birthday):
+                updates['birthday'] = convert_flexible_date_to_iso(new_birthday)
+                break
+            else:
+                print("❌ Ongeldige datum. Gebruik formaat dd-mm-jjjj of dd/mm/jj.")
+        
+        # Gender validation
+        while True:
+            new_gender = input(f"Geslacht ({current_traveller['gender']}) (male/female/m/f): ").strip()
+            if check_back_command(new_gender):
+                return
+            
+            if not new_gender:
+                break
+            elif validate_gender(new_gender):
+                updates['gender'] = 'male' if new_gender.lower() in ['male', 'm', 'man'] else 'female'
+                break
+            else:
+                print("❌ Ongeldig geslacht. Gebruik male, female, m, f, man, of vrouw.")
+        
+        # Street name validation
+        while True:
+            new_street = input(f"Straatnaam ({current_traveller['street_name']}): ").strip()
+            if check_back_command(new_street):
+                return
+            
+            if not new_street:
+                break
+            elif validate_street_name(new_street):
+                updates['street_name'] = new_street
+                break
+            else:
+                print("❌ Ongeldige straatnaam.")
+        
+        # House number validation
+        while True:
+            new_house_number = input(f"Huisnummer ({current_traveller['house_number']}): ").strip()
+            if check_back_command(new_house_number):
+                return
+            
+            if not new_house_number:
+                break
+            elif validate_house_number(new_house_number):
+                updates['house_number'] = new_house_number
+                break
+            else:
+                print("❌ Ongeldig huisnummer.")
+        
+        # Zip code validation
+        while True:
+            new_zip = input(f"Postcode ({current_traveller['zip_code']}): ").strip()
+            if check_back_command(new_zip):
+                return
+            
+            if not new_zip:
+                break
+            elif validate_zip_code(new_zip):
+                updates['zip_code'] = new_zip.upper()
+                break
+            else:
+                print("❌ Ongeldige postcode. Gebruik formaat 1234AB.")
+        
+        # City validation
+        while True:
+            new_city = input(f"Stad ({current_traveller['city']}): ").strip()
+            if check_back_command(new_city):
+                return
+            
+            if not new_city:
+                break
+            elif validate_city(new_city):
+                updates['city'] = new_city
+                break
+            else:
+                cities = get_valid_cities()
+                print(f"❌ Ongeldige stad. Beschikbare steden: {', '.join(cities)}")
+        
+        # Email validation
         while True:
             new_email = input(f"Email ({current_traveller['email_address']}): ").strip()
             if check_back_command(new_email):
                 return
             
             if not new_email:
-                # Empty is allowed - no change
                 break
             elif validate_email(new_email):
                 updates['email_address'] = new_email
                 break
             else:
-                print("❌ Ongeldig email format. Probeer opnieuw of laat leeg.")
+                print("❌ Ongeldig email format.")
         
-        # Phone validation with proper error handling
+        # Phone validation
         while True:
             new_phone = input(f"Mobiel nummer ({current_traveller['mobile_phone']}): ").strip()
             if check_back_command(new_phone):
                 return
             
             if not new_phone:
-                # Empty is allowed - no change
                 break
             elif validate_mobile_phone(new_phone):
                 updates['mobile_phone'] = new_phone
                 break
             else:
-                print("❌ Ongeldig telefoonnummer. Voer 8 cijfers in. Probeer opnieuw of laat leeg.")
+                print("❌ Ongeldig telefoonnummer. Voer 8 cijfers in.")
+        
+        # Driving license validation
+        while True:
+            new_license = input(f"Rijbewijsnummer ({current_traveller['driving_license_number']}): ").strip()
+            if check_back_command(new_license):
+                return
+            
+            if not new_license:
+                break
+            elif validate_driving_license(new_license):
+                updates['driving_license_number'] = new_license.upper()
+                break
+            else:
+                print("❌ Ongeldig rijbewijsnummer. Gebruik formaat XXDDDDDDD of XDDDDDDDD.")
         
         if not updates:
             print("Geen wijzigingen opgegeven")
@@ -1042,7 +1186,7 @@ def create_scooter_menu(username: str):
     pause()
 
 def update_scooter_menu(username: str, role: str):
-    """Update scooter based on user role"""
+    """Update scooter based on user role - all fields editable"""
     clear_screen()
     show_header("Scooter Bijwerken")
     
@@ -1072,8 +1216,12 @@ def update_scooter_menu(username: str, role: str):
             return
         
         # Display current info
-        print(f"\nHuidige gegevens van {current_scooter['brand']} {current_scooter['model']}:")
-        print(f"🔋 Batterij: {current_scooter['state_of_charge']}%")
+        print(f"\nHuidige gegevens van scooter {serial_number}:")
+        print(f"🏭 Merk/Model: {current_scooter['brand']} {current_scooter['model']}")
+        print(f"⚡ Topsnelheid: {current_scooter['top_speed']} km/h")
+        print(f"🔋 Batterijcapaciteit: {current_scooter['battery_capacity']} Wh")
+        print(f"🔋 Batterijlading: {current_scooter['state_of_charge']}%")
+        print(f"🎯 Batterijbereik: {current_scooter['target_range_soc']}")
         print(f"📍 Locatie: {current_scooter['location']}")
         print(f"🚦 Status: {'Buiten dienst' if current_scooter['out_of_service_status'] else 'In dienst'}")
         print(f"🛣️  Kilometerstand: {current_scooter['mileage']} km")
@@ -1083,93 +1231,164 @@ def update_scooter_menu(username: str, role: str):
         # Define which fields can be updated based on role
         if role == 'service_engineer':
             print("\n🔧 Als Service Engineer kun je bijwerken: batterijlading, locatie, status, kilometerstand, onderhoudsdatum")
+            allowed_fields = ['state_of_charge', 'location', 'out_of_service_status', 'mileage', 'last_maintenance_date']
         else:  # super_admin or system_admin
             print("\n👑 Als Administrator kun je alle velden bijwerken")
+            allowed_fields = ['brand', 'model', 'top_speed', 'battery_capacity', 'state_of_charge', 'target_range_soc', 'location', 'out_of_service_status', 'mileage', 'last_maintenance_date']
         
         # Collect updates
         updates = {}
         
         print("\nVoer nieuwe waarden in (laat leeg om ongewijzigd te laten):")
         
-        # Battery charge - flexible validation
-        new_soc = input(f"Batterijlading ({current_scooter['state_of_charge']}%): ").strip()
-        if check_back_command(new_soc):
-            return
-        
-        if new_soc:
-            try:
-                soc_value = int(new_soc)
-                if 0 <= soc_value <= 100:
-                    updates['state_of_charge'] = soc_value
+        # Brand (admin only)
+        if 'brand' in allowed_fields:
+            while True:
+                new_brand = input(f"Merk ({current_scooter['brand']}): ").strip()
+                if check_back_command(new_brand):
+                    return
+                
+                if not new_brand:
+                    break
+                elif validate_brand_model(new_brand):
+                    updates['brand'] = new_brand
+                    break
                 else:
-                    print("⚠️  Batterijlading buiten normale range, maar wordt toch opgeslagen.")
-                    updates['state_of_charge'] = soc_value
-            except ValueError:
-                print("❌ Moet een getal zijn voor batterijlading.")
+                    print("❌ Ongeldige merk naam.")
         
-        print("Nieuwe GPS locatie (laat beide leeg om ongewijzigd te laten):")
-        current_coords = current_scooter['location'].split(',') if ',' in current_scooter['location'] else ['', '']
+        # Model (admin only)
+        if 'model' in allowed_fields:
+            while True:
+                new_model = input(f"Model ({current_scooter['model']}): ").strip()
+                if check_back_command(new_model):
+                    return
+                
+                if not new_model:
+                    break
+                elif validate_brand_model(new_model):
+                    updates['model'] = new_model
+                    break
+                else:
+                    print("❌ Ongeldige model naam.")
         
-        while True:
-            new_lat = input(f"Latitude (huidig: {current_coords[0] if len(current_coords) > 0 else ''}): ").strip()
-            if check_back_command(new_lat):
+        # Top speed (admin only)
+        if 'top_speed' in allowed_fields:
+            while True:
+                new_top_speed = input(f"Topsnelheid ({current_scooter['top_speed']} km/h): ").strip()
+                if check_back_command(new_top_speed):
+                    return
+                
+                if not new_top_speed:
+                    break
+                elif validate_positive_integer(new_top_speed):
+                    updates['top_speed'] = int(new_top_speed)
+                    break
+                else:
+                    print("❌ Moet een positief getal zijn.")
+        
+        # Battery capacity (admin only)
+        if 'battery_capacity' in allowed_fields:
+            while True:
+                new_capacity = input(f"Batterijcapaciteit ({current_scooter['battery_capacity']} Wh): ").strip()
+                if check_back_command(new_capacity):
+                    return
+                
+                if not new_capacity:
+                    break
+                elif validate_positive_integer(new_capacity):
+                    updates['battery_capacity'] = int(new_capacity)
+                    break
+                else:
+                    print("❌ Moet een positief getal zijn.")
+        
+        # Battery charge
+        if 'state_of_charge' in allowed_fields:
+            new_soc = input(f"Batterijlading ({current_scooter['state_of_charge']}%): ").strip()
+            if check_back_command(new_soc):
                 return
             
-            new_lon = input(f"Longitude (huidig: {current_coords[1] if len(current_coords) > 1 else ''}): ").strip()
-            if check_back_command(new_lon):
+            if new_soc:
+                try:
+                    soc_value = int(new_soc)
+                    if 0 <= soc_value <= 100:
+                        updates['state_of_charge'] = soc_value
+                    else:
+                        print("⚠️  Batterijlading buiten normale range, maar wordt toch opgeslagen.")
+                        updates['state_of_charge'] = soc_value
+                except ValueError:
+                    print("❌ Moet een getal zijn voor batterijlading.")
+        
+        # Target range SoC (admin only)
+        if 'target_range_soc' in allowed_fields:
+            new_target_range = input(f"Batterijbereik ({current_scooter['target_range_soc']}): ").strip()
+            if check_back_command(new_target_range):
                 return
             
-            if not new_lat and not new_lon:
-                # Both empty - no change
-                break
-            elif new_lat and new_lon and validate_gps_coordinates(new_lat, new_lon):
-                updates['location'] = f"{new_lat},{new_lon}"
-                break
-            elif new_lat and new_lon:
-                print("❌ Ongeldige GPS coördinaten voor Rotterdam gebied.")
-                print("Latitude moet tussen 51.8 en 52.1 zijn, Longitude tussen 4.2 en 4.8")
-                print("Gebruik 5 decimalen nauwkeurig (bijv. 51.92250, 4.47917)")
-                print("Of laat beide velden leeg voor geen wijziging. Probeer opnieuw.")
-            else:
-                print("❌ Voer beide coördinaten in of laat beide leeg.")
-                print("Probeer opnieuw.")
+            if new_target_range:
+                updates['target_range_soc'] = new_target_range
         
-        current_status = "buiten dienst" if current_scooter['out_of_service_status'] else "in dienst"
-        new_status = input(f"Status ({current_status}) - voer 'uit' in voor buiten dienst, 'in' voor in dienst: ").strip().lower()
-        if check_back_command(new_status):
-            return
-        if new_status in ['uit', 'buiten', 'out']:
-            updates['out_of_service_status'] = 1
-        elif new_status in ['in', 'actief', 'active']:
-            updates['out_of_service_status'] = 0
-        
-        # Mileage - flexible validation  
-        new_mileage = input(f"Kilometerstand ({current_scooter['mileage']} km): ").strip()
-        if check_back_command(new_mileage):
-            return
-        
-        if new_mileage:
-            try:
-                mileage_value = float(new_mileage)
-                if mileage_value >= 0:
-                    updates['mileage'] = mileage_value
+        # GPS location
+        if 'location' in allowed_fields:
+            print("Nieuwe GPS locatie (laat beide leeg om ongewijzigd te laten):")
+            current_coords = current_scooter['location'].split(',') if ',' in current_scooter['location'] else ['', '']
+            
+            while True:
+                new_lat = input(f"Latitude (huidig: {current_coords[0] if len(current_coords) > 0 else ''}): ").strip()
+                if check_back_command(new_lat):
+                    return
+                
+                new_lon = input(f"Longitude (huidig: {current_coords[1] if len(current_coords) > 1 else ''}): ").strip()
+                if check_back_command(new_lon):
+                    return
+                
+                if not new_lat and not new_lon:
+                    break
+                elif new_lat and new_lon:
+                    updates['location'] = f"{new_lat},{new_lon}"
+                    break
                 else:
-                    print("⚠️  Negatieve kilometerstand, maar wordt toch opgeslagen.")
-                    updates['mileage'] = mileage_value
-            except ValueError:
-                print("❌ Moet een getal zijn voor kilometerstand.")
+                    print("❌ Voer beide coördinaten in of laat beide leeg.")
         
-        # Flexible maintenance date validation
-        new_maintenance = input(f"Laatste onderhoudsdatum ({current_scooter['last_maintenance_date'] or 'Niet bekend'}) (bijv. 15-03-2024): ").strip()
-        if check_back_command(new_maintenance):
-            return
+        # Service status
+        if 'out_of_service_status' in allowed_fields:
+            current_status = "buiten dienst" if current_scooter['out_of_service_status'] else "in dienst"
+            new_status = input(f"Status ({current_status}) - voer 'uit' in voor buiten dienst, 'in' voor in dienst: ").strip().lower()
+            if check_back_command(new_status):
+                return
+            if new_status in ['uit', 'buiten', 'out']:
+                updates['out_of_service_status'] = 1
+            elif new_status in ['in', 'actief', 'active']:
+                updates['out_of_service_status'] = 0
         
-        if new_maintenance:
-            if validate_flexible_date(new_maintenance):
-                updates['last_maintenance_date'] = convert_flexible_date_to_iso(new_maintenance)
-            else:
-                print("⚠️  Datum format niet herkend, maar wordt toch opgeslagen.")
-                updates['last_maintenance_date'] = new_maintenance
+        # Mileage
+        if 'mileage' in allowed_fields:
+            new_mileage = input(f"Kilometerstand ({current_scooter['mileage']} km): ").strip()
+            if check_back_command(new_mileage):
+                return
+            
+            if new_mileage:
+                try:
+                    mileage_value = float(new_mileage)
+                    if mileage_value >= 0:
+                        updates['mileage'] = mileage_value
+                    else:
+                        print("⚠️  Negatieve kilometerstand, maar wordt toch opgeslagen.")
+                        updates['mileage'] = mileage_value
+                except ValueError:
+                    print("❌ Moet een getal zijn voor kilometerstand.")
+        
+        # Maintenance date
+        if 'last_maintenance_date' in allowed_fields:
+            new_maintenance = input(f"Laatste onderhoudsdatum ({current_scooter['last_maintenance_date'] or 'Niet bekend'}) (bijv. 15-03-2024): ").strip()
+            if check_back_command(new_maintenance):
+                return
+            
+            if new_maintenance:
+                if validate_flexible_date(new_maintenance):
+                    updates['last_maintenance_date'] = convert_flexible_date_to_iso(new_maintenance)
+                else:
+                    print("⚠️  Datum format niet herkend, maar wordt toch opgeslagen.")
+                    updates['last_maintenance_date'] = new_maintenance
         
         if not updates:
             print("Geen wijzigingen opgegeven")
