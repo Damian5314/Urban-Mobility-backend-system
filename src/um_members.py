@@ -1223,7 +1223,7 @@ def create_scooter_menu(username: str):
         if mileage is None: return
         
         # Flexible maintenance date
-        maintenance_date = input("Laatste onderhoudsdatum (bijv. 15-03-2024, 15/03/24, optioneel): ").strip()
+        maintenance_date = input("Laatste onderhoudsdatum (bijv. 2024-03-15): ").strip()
         if check_back_command(maintenance_date):
             return
         
