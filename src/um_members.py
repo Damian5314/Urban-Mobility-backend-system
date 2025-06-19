@@ -1462,7 +1462,7 @@ def update_scooter_menu(username: str, role: str):
         
         # Maintenance date
         if 'last_maintenance_date' in allowed_fields:
-            new_maintenance = input(f"Laatste onderhoudsdatum ({current_scooter['last_maintenance_date'] or 'Niet bekend'}) (bijv. 15-03-2024): ").strip()
+            new_maintenance = input(f"Laatste onderhoudsdatum ({current_scooter['last_maintenance_date'] or 'Niet bekend'}) (bijv. 2024-03-15): ").strip()
             if check_back_command(new_maintenance):
                 return
             
